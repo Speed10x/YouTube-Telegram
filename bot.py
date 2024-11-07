@@ -6,6 +6,8 @@ from googleapiclient.discovery import build
 import yt_dlp
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import aiohttp
+from flask import Flask
+from threading import Thread
 
 # Configuration
 API_ID = os.environ.get('TELEGRAM_API_ID')
@@ -28,6 +30,13 @@ ydl_opts = {
         'preferredquality': '192',
     }],
 }
+
+# Flask app
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "YouTube Telegram Bot is running!"
 
 # Helper function to create a YouTube-like UI
 async def create_youtube_ui(title, description, thumbnail_url, video_id):
@@ -139,6 +148,12 @@ async def update_trending():
 scheduler.add_job(update_trending, 'interval', hours=1)
 scheduler.start()
 
+def run_flask():
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
+
 # Start the bot
 if __name__ == '__main__':
+    flask_thread = Thread(target=run_flask)
+    flask_thread.start()
     bot.run_until_disconnected()
