@@ -43,12 +43,7 @@ def home():
 # Helper function to create a YouTube-like UI
 async def create_youtube_ui(title, description, thumbnail_url, video_id):
     keyboard = [
-        [Button.inline("▶️ Play", data=f"play_{video_id}")],
-        [
-            Button.inline("⬇️ 360p", data=f"download_{video_id}_360"),
-            Button.inline("⬇️ 720p", data=f"download_{video_id}_720"),
-            Button.inline("⬇️ 1080p", data=f"download_{video_id}_1080")
-        ],
+        [Button.url("▶️ Watch on YouTube", f"https://www.youtube.com/watch?v={video_id}")],
         [Button.inline("🔍 Search", data="search"), Button.inline("🔥 Trending", data="trending")]
     ]
     
@@ -126,43 +121,11 @@ async def trending(event):
 @bot.on(events.CallbackQuery())
 async def callback(event):
     data = event.data.decode('utf-8')
-    if data.startswith('play_'):
-        video_id = data.split('_')[1]
-        await event.answer("Starting playback...")
-        await stream_video(event, video_id)
-    elif data.startswith('download_'):
-        video_id, quality = data.split('_')[1:]
-        await event.answer(f"Preparing {quality} download...")
-        await download_video(event, video_id, quality)
-    elif data == 'search':
+    if data == 'search':
         await event.answer("Use /search to find videos")
     elif data == 'trending':
         await event.answer("Fetching trending videos...")
         await trending(event)
-
-async def stream_video(event, video_id):
-    ydl_opts = {'format': 'best'}
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
-        url = info['url']
-    
-    await event.reply(f"Stream URL: {url}\n\nYou can play this in your preferred media player or browser.")
-
-async def download_video(event, video_id, quality):
-    ydl_opts = {
-        'format': f'bestvideo[height<={quality[:-1]}]+bestaudio/best[height<={quality[:-1]}]',
-        'outtmpl': 'video.%(ext)s'
-    }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
-        filename = ydl.prepare_filename(info)
-    
-    file_size = os.path.getsize(filename) / (1024 * 1024)  # Size in MB
-    if file_size > 50:
-        await event.reply(f"Sorry, the file size ({file_size:.2f}MB) exceeds Telegram's limit. Please try a lower quality.")
-    else:
-        await event.reply(file=filename)
-    os.remove(filename)
 
 # Scheduler for updating trending videos
 scheduler = AsyncIOScheduler()
