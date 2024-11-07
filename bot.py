@@ -9,6 +9,7 @@ import aiohttp
 from flask import Flask
 from threading import Thread
 import tempfile
+from telethon.errors import TimeoutError
 
 # Configuration
 API_ID = os.environ.get('TELEGRAM_API_ID')
@@ -78,25 +79,29 @@ async def start(event):
 # Handler for /search command
 @bot.on(events.NewMessage(pattern='/search'))
 async def search(event):
-    await event.reply("What would you like to search for?")
-    async with bot.conversation(event.chat.id) as conv:
-        response = await conv.get_response()
-        query = response.text
-        search_response = youtube.search().list(q=query, type='video', part='id,snippet', maxResults=5).execute()
-        
-        for item in search_response['items']:
-            video_id = item['id']['videoId']
-            title = item['snippet']['title']
-            description = item['snippet']['description']
-            thumbnail_url = item['snippet']['thumbnails']['default']['url']
+    sender = await event.get_sender()
+    async with bot.conversation(sender) as conv:
+        await conv.send_message("What would you like to search for?")
+        try:
+            response = await conv.get_response(timeout=30)
+            query = response.text
+            search_response = youtube.search().list(q=query, type='video', part='id,snippet', maxResults=5).execute()
             
-            ui = await create_youtube_ui(title, description, thumbnail_url, video_id)
-            thumb_path = await download_thumbnail(ui['thumb_url'])
-            if thumb_path:
-                await event.reply(file=thumb_path, message=f"**{ui['title']}**\n\n{ui['description']}", buttons=ui['buttons'])
-                os.unlink(thumb_path)
-            else:
-                await event.reply(message=f"**{ui['title']}**\n\n{ui['description']}", buttons=ui['buttons'])
+            for item in search_response['items']:
+                video_id = item['id']['videoId']
+                title = item['snippet']['title']
+                description = item['snippet']['description']
+                thumbnail_url = item['snippet']['thumbnails']['default']['url']
+                
+                ui = await create_youtube_ui(title, description, thumbnail_url, video_id)
+                thumb_path = await download_thumbnail(ui['thumb_url'])
+                if thumb_path:
+                    await conv.send_file(thumb_path, caption=f"**{ui['title']}**\n\n{ui['description']}", buttons=ui['buttons'])
+                    os.unlink(thumb_path)
+                else:
+                    await conv.send_message(f"**{ui['title']}**\n\n{ui['description']}", buttons=ui['buttons'])
+        except TimeoutError:
+            await conv.send_message("Search request timed out. Please try again.")
 
 # Handler for /trending command
 @bot.on(events.NewMessage(pattern='/trending'))
@@ -112,10 +117,10 @@ async def trending(event):
         ui = await create_youtube_ui(title, description, thumbnail_url, video_id)
         thumb_path = await download_thumbnail(ui['thumb_url'])
         if thumb_path:
-            await event.reply(file=thumb_path, message=f"**{ui['title']}**\n\n{ui['description']}", buttons=ui['buttons'])
+            await event.reply(file=thumb_path, caption=f"**{ui['title']}**\n\n{ui['description']}", buttons=ui['buttons'])
             os.unlink(thumb_path)
         else:
-            await event.reply(message=f"**{ui['title']}**\n\n{ui['description']}", buttons=ui['buttons'])
+            await event.reply(f"**{ui['title']}**\n\n{ui['description']}", buttons=ui['buttons'])
 
 # Handler for inline button callbacks
 @bot.on(events.CallbackQuery())
