@@ -8,6 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import aiohttp
 from flask import Flask
 from threading import Thread
+import tempfile
 
 # Configuration
 API_ID = os.environ.get('TELEGRAM_API_ID')
@@ -53,9 +54,20 @@ async def create_youtube_ui(title, description, thumbnail_url, video_id):
     return {
         'title': title,
         'description': description,
-        'thumb': InputWebDocument(thumbnail_url, 0, "image/jpeg", []),
+        'thumb_url': thumbnail_url,
         'buttons': keyboard
     }
+
+# Helper function to download thumbnail
+async def download_thumbnail(url):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            if response.status == 200:
+                f = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+                f.write(await response.read())
+                f.close()
+                return f.name
+    return None
 
 # Handler for /start command
 @bot.on(events.NewMessage(pattern='/start'))
@@ -67,7 +79,7 @@ async def start(event):
 @bot.on(events.NewMessage(pattern='/search'))
 async def search(event):
     await event.reply("What would you like to search for?")
-    async with bot.conversation(event.chat_id) as conv:
+    async with bot.conversation(event.chat.id) as conv:
         response = await conv.get_response()
         query = response.text
         search_response = youtube.search().list(q=query, type='video', part='id,snippet', maxResults=5).execute()
@@ -79,7 +91,12 @@ async def search(event):
             thumbnail_url = item['snippet']['thumbnails']['default']['url']
             
             ui = await create_youtube_ui(title, description, thumbnail_url, video_id)
-            await event.reply(file=ui['thumb'], message=f"**{ui['title']}**\n\n{ui['description']}", buttons=ui['buttons'])
+            thumb_path = await download_thumbnail(ui['thumb_url'])
+            if thumb_path:
+                await event.reply(file=thumb_path, message=f"**{ui['title']}**\n\n{ui['description']}", buttons=ui['buttons'])
+                os.unlink(thumb_path)
+            else:
+                await event.reply(message=f"**{ui['title']}**\n\n{ui['description']}", buttons=ui['buttons'])
 
 # Handler for /trending command
 @bot.on(events.NewMessage(pattern='/trending'))
@@ -93,7 +110,12 @@ async def trending(event):
         thumbnail_url = item['snippet']['thumbnails']['default']['url']
         
         ui = await create_youtube_ui(title, description, thumbnail_url, video_id)
-        await event.reply(file=ui['thumb'], message=f"**{ui['title']}**\n\n{ui['description']}", buttons=ui['buttons'])
+        thumb_path = await download_thumbnail(ui['thumb_url'])
+        if thumb_path:
+            await event.reply(file=thumb_path, message=f"**{ui['title']}**\n\n{ui['description']}", buttons=ui['buttons'])
+            os.unlink(thumb_path)
+        else:
+            await event.reply(message=f"**{ui['title']}**\n\n{ui['description']}", buttons=ui['buttons'])
 
 # Handler for inline button callbacks
 @bot.on(events.CallbackQuery())
